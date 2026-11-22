@@ -49,15 +49,25 @@
           </button>
         </div>
 
+        <div class="favs" id="favs" aria-label="Luoghi salvati"></div>
+
         <div class="when">
-          <div class="seg" role="group" aria-label="Quando parti">
+          <div class="seg" role="group" aria-label="Quando">
             <button type="button" id="when-now" aria-pressed="true">Adesso</button>
             <button type="button" id="when-later" aria-pressed="false">Parti alle…</button>
+            <button type="button" id="when-by" aria-pressed="false">Arriva entro…</button>
           </div>
           <div class="when-at" id="when-at" hidden>
             <input type="date" id="when-date" aria-label="Giorno">
             <input type="time" id="when-time" aria-label="Ora" step="60">
           </div>
+        </div>
+
+        <div class="opts">
+          <button type="button" class="chip-toggle" id="acc" aria-pressed="false" title="Usa solo mezzi e fermate accessibili in carrozzina">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="4" r="1.6"/><path d="M11 7.5v6h5.5l2.5 5"/><path d="M11 10.5h5"/><path d="M8.5 11.2a5.5 5.5 0 1 0 7.6 6.6"/></svg>
+            Solo mezzi accessibili
+          </button>
         </div>
 
         <button type="submit" class="go" id="go">Cerca il percorso</button>
@@ -80,6 +90,7 @@
         </button>
       </div>
       <div class="map-pop" id="map-pop" hidden></div>
+      <a class="osm-attr" id="osm-attr" href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener" hidden>© OpenStreetMap</a>
     </section>
   </main>
 
@@ -88,6 +99,20 @@
     <span>Orari programmati, non in tempo reale</span>
     <span>App non ufficiale</span>
   </footer>
+</div>
+
+<div class="toast" id="toast" role="status" hidden></div>
+
+<div class="tripbar" id="tripbar" hidden>
+  <div class="tb-text"><p id="tb-main"></p><p id="tb-sub"></p></div>
+  <button type="button" id="tb-stop">Ferma</button>
+</div>
+
+<div class="scanner" id="scanner" hidden>
+  <video id="scan-video" playsinline muted></video>
+  <div class="scan-frame" aria-hidden="true"></div>
+  <p class="scan-msg" id="scan-msg">Inquadra il QR sul cartello della fermata</p>
+  <button type="button" class="scan-close" id="scan-close">Annulla</button>
 </div>
 
 <script>

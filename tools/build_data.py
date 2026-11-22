@@ -5,13 +5,14 @@ Uso:
 
 Struttura dell'output (tutti gli indici sono posizioni negli array):
     feed:     versione, data inizio/fine validita, numero di giorni
-    stops:    code[], name[], desc[], city[], lat[], lon[]  (lat/lon * 1e5)
+    stops:    code[], name[], desc[], city[], lat[], lon[] (lat/lon * 1e5), wc[]
     routes:   [nome breve, nome lungo, tipo GTFS, agenzia]
     services: per ogni servizio una stringa di '0'/'1', un carattere per giorno
     patterns: corse con la stessa sequenza di fermate, senza sorpassi:
               r = linea, h = destinazione, s = fermate,
               p = profili (differenze in secondi tra fermate consecutive),
-              t = corse appiattite [servizio, partenza in secondi, profilo, ...]
+              t = corse appiattite [servizio, partenza in secondi, profilo, accessibile, ...]
+              (accessibile e stops.wc: 0 non indicato, 1 si', 2 no)
 """
 import csv
 import datetime as dt
@@ -93,7 +94,7 @@ ndays = (end - start).days + 1
 # --- fermate --------------------------------------------------------------
 city = {r["stop_id"]: r["stop_city"] for r in rows("stop_attributes.txt")}
 stop_idx = {}
-S = {k: [] for k in ("code", "name", "desc", "city", "lat", "lon")}
+S = {k: [] for k in ("code", "name", "desc", "city", "lat", "lon", "wc")}
 for r in rows("stops.txt"):
     if r["location_type"] not in ("", "0"):
         continue
@@ -105,6 +106,7 @@ for r in rows("stops.txt"):
     S["city"].append(title(city.get(r["stop_id"], "")))
     S["lat"].append(round(float(r["stop_lat"]) * 1e5))
     S["lon"].append(round(float(r["stop_lon"]) * 1e5))
+    S["wc"].append(int(r.get("wheelchair_boarding") or 0))
 
 # --- linee ----------------------------------------------------------------
 route_idx = {}
@@ -154,30 +156,30 @@ for tid, st in seq.items():
     stops_ = tuple(stop_idx[s] for _, s, _ in st)
     times = [t for _, _, t in st]
     key = (route_idx[tr["route_id"]], title(tr["trip_headsign"]), stops_)
-    groups[key].append((times, svc_idx[tr["service_id"]]))
+    groups[key].append((times, svc_idx[tr["service_id"]], int(tr.get("wheelchair_accessible") or 0)))
 
 patterns = []
 for (ri, head, stops_), lst in groups.items():
     lst.sort(key=lambda x: x[0][0])
     subs = []  # ogni sotto-pattern: lista di corse senza sorpassi
-    for times, svc in lst:
+    for times, svc, wc in lst:
         for sub in subs:
             last = sub[-1][0]
             if all(a >= b for a, b in zip(times, last)):
-                sub.append((times, svc))
+                sub.append((times, svc, wc))
                 break
         else:
-            subs.append([(times, svc)])
+            subs.append([(times, svc, wc)])
     for sub in subs:
         prof_idx = {}
         profs = []
         flat = []
-        for times, svc in sub:
+        for times, svc, wc in sub:
             delta = tuple(times[i + 1] - times[i] for i in range(len(times) - 1))
             if delta not in prof_idx:
                 prof_idx[delta] = len(profs)
                 profs.append(list(delta))
-            flat += [svc, times[0], prof_idx[delta]]
+            flat += [svc, times[0], prof_idx[delta], wc]
         patterns.append({"r": ri, "h": head, "s": list(stops_), "p": profs, "t": flat})
 
 out = {
@@ -188,7 +190,7 @@ out = {
 with open(OUT, "w", encoding="utf-8") as f:
     json.dump(out, f, ensure_ascii=False, separators=(",", ":"))
 
-ntrips = sum(len(p["t"]) // 3 for p in patterns)
+ntrips = sum(len(p["t"]) // 4 for p in patterns)
 nprof = sum(len(p["p"]) for p in patterns)
 print(f"fermate {len(S['code'])}, linee {len(routes)}, servizi {len(services)}, "
       f"pattern {len(patterns)}, corse {ntrips}, profili {nprof}, "

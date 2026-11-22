@@ -5,6 +5,8 @@ Produce:
     dist/index.html   la stessa pagina per l'Artifact di claude.ai (senza <!doctype>, la aggiunge il servizio)
 I dati docs/rete.json vengono copiati anche in dist/.
 """
+import hashlib
+import json
 import os
 import shutil
 
@@ -47,4 +49,14 @@ write(os.path.join(ROOT, "dist", "index.html"), page)
 data = os.path.join(ROOT, "docs", "rete.json")
 if os.path.exists(data):
     shutil.copyfile(data, os.path.join(ROOT, "dist", "rete.json"))
-print("ok: docs/index.html, dist/index.html")
+
+# service worker: la versione cambia quando cambiano pagina, orari o librerie,
+# cosi' il telefono scarica la nuova versione e butta la vecchia
+FILES = ["index.html", "rete.json", "manifest.webmanifest", "icon-180.png", "icon-192.png", "icon-512.png", "jsQR.js"]
+h = hashlib.sha1()
+for name in FILES:
+    with open(os.path.join(ROOT, "docs", name), "rb") as f:
+        h.update(f.read())
+sw = read("src", "sw.js").replace("__VERSION__", h.hexdigest()[:12]).replace("__FILES__", json.dumps(["./"] + FILES))
+write(os.path.join(ROOT, "docs", "sw.js"), sw)
+print("ok: docs/index.html, docs/sw.js, dist/index.html")

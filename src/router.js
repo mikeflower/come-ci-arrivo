@@ -34,6 +34,7 @@
       this.code = S.code; this.name = S.name; this.desc = S.desc; this.city = S.city;
       this.lat = new Float64Array(n); this.lon = new Float64Array(n);
       for (let i = 0; i < n; i++) { this.lat[i] = S.lat[i] / 1e5; this.lon[i] = S.lon[i] / 1e5; }
+      this.wc = Int8Array.from(S.wc || []); // accessibilita' fermata: 0 non indicata, 1 si', 2 no
       this.routes = data.routes.map(([short, long, type, agency]) => ({ short, long, type, agency }));
       this.services = data.services;
       this.patterns = data.patterns.map((p) => {
@@ -43,10 +44,10 @@
           for (let i = 0; i < d.length; i++) c[i + 1] = c[i] + d[i];
           return c;
         });
-        const m = p.t.length / 3;
-        const svc = new Int32Array(m), start = new Int32Array(m), prof = new Int32Array(m);
-        for (let k = 0; k < m; k++) { svc[k] = p.t[3 * k]; start[k] = p.t[3 * k + 1]; prof[k] = p.t[3 * k + 2]; }
-        return { route: p.r, head: p.h, stops, profs, svc, start, prof, n: m };
+        const m = p.t.length / 4;
+        const svc = new Int32Array(m), start = new Int32Array(m), prof = new Int32Array(m), wc = new Int8Array(m);
+        for (let k = 0; k < m; k++) { svc[k] = p.t[4 * k]; start[k] = p.t[4 * k + 1]; prof[k] = p.t[4 * k + 2]; wc[k] = p.t[4 * k + 3]; }
+        return { route: p.r, head: p.h, stops, profs, svc, start, prof, wc, n: m };
       });
 
       // fermata -> elenco di (pattern, posizione)
@@ -131,6 +132,7 @@
           start: Int32Array.from(ord, (i) => st[i]),
           prof: Int32Array.from(ord, (i) => pr[i]),
           id: Int32Array.from(ord, (i) => id[i]),
+          wc: Int8Array.from(ord, (i) => P.wc[id[i]]),
         };
       });
       if (this._tt.size > 3) this._tt.clear();
@@ -153,7 +155,7 @@
     }
 
     /** Una ricerca RAPTOR: restituisce i percorsi ottimi per numero di cambi. */
-    _search(day, t0, access, egress, from, to) {
+    _search(day, t0, access, egress, from, to, acc) {
       const n = this.nStops;
       const tt = this.timetable(day);
       const arr = [new Float64Array(n).fill(INF)];
@@ -190,7 +192,7 @@
           let trip = -1, bPos = -1;
           for (let pos = pos0; pos < L; pos++) {
             const s = P.stops[pos];
-            if (trip >= 0) {
+            if (trip >= 0 && !(acc && this.wc[s] === 2)) {
               const a = T.start[trip] + P.profs[T.prof[trip]][pos];
               if (a < best[s] && a < bestTarget) {
                 cur[s] = a; best[s] = a;
@@ -198,7 +200,7 @@
                 improved.add(s);
               }
             }
-            if (prev[s] < INF && pos < L - 1) {
+            if (prev[s] < INF && pos < L - 1 && !(acc && this.wc[s] === 2)) {
               const ready = prev[s] + (k > 1 ? SLACK : 0);
               if (trip < 0 || ready < T.start[trip] + P.profs[T.prof[trip]][pos]) {
                 let lo = 0, hi = trip < 0 ? T.n : trip;
@@ -206,6 +208,7 @@
                   const mid = (lo + hi) >> 1;
                   if (T.start[mid] + P.profs[T.prof[mid]][pos] >= ready) hi = mid; else lo = mid + 1;
                 }
+                if (acc) while (lo < T.n && T.wc[lo] === 2) lo++;
                 if (lo < (trip < 0 ? T.n : trip)) { trip = lo; bPos = pos; }
               }
             }
@@ -263,6 +266,7 @@
           trip: T.id[p.trip], boardPos: p.b, alightPos: p.a,
           from: stopPt(P.stops[p.b]), to: stopPt(P.stops[p.a]),
           start: base + c[p.b], end: base + c[p.a], stops, times,
+          wc: T.wc[p.trip],
         });
         s = P.stops[p.b];
         kk--;
@@ -277,31 +281,83 @@
       return finish(legs, from, to);
     }
 
-    /** Cerca i percorsi.
-     * q = { from:{lat,lon,stops?}, to:{lat,lon,stops?}, day, time (secondi dalla mezzanotte) } */
-    plan(q) {
+    _prep(q) {
       const from = { lat: q.from.lat, lon: q.from.lon };
       const to = { lat: q.to.lat, lon: q.to.lon };
-      const out = [];
       const direct = dist(from.lat, from.lon, to.lat, to.lon);
-      const walkOnly = walkSecs(direct);
+      return { from, to, direct, walkOnly: walkSecs(direct),
+        access: this._access(from.lat, from.lon, q.from.stops),
+        egress: this._access(to.lat, to.lon, q.to.stops) };
+    }
+
+    /** Cerca i percorsi in partenza dopo q.time.
+     * q = { from:{lat,lon,stops?}, to:{lat,lon,stops?}, day, time (secondi dalla mezzanotte), accessible? } */
+    plan(q) {
+      const { from, to, direct, walkOnly, access, egress } = this._prep(q);
+      const out = [];
       if (walkOnly <= MAX_WALK_ONLY) {
         out.push(finish([{ type: 'walk', from, to, dur: walkOnly, dist: direct, start: q.time, end: q.time + walkOnly }], from, to));
       }
       if (!this.inFeed(q.day) && !this.inFeed(q.day - 1)) return { journeys: out, reason: 'outside' };
-      const access = this._access(from.lat, from.lon, q.from.stops);
-      const egress = this._access(to.lat, to.lon, q.to.stops);
       if (!access.length || !egress.length) return { journeys: out, reason: access.length ? 'noEgress' : 'noAccess' };
 
       let t = q.time;
       for (let i = 0; i < 4; i++) {
-        const res = this._search(q.day, t, access, egress, from, to).filter((j) => j.rides > 0);
+        const res = this._search(q.day, t, access, egress, from, to, q.accessible).filter((j) => j.rides > 0);
         if (!res.length) break;
         out.push(...(i === 0 ? res : [res[res.length - 1]]));
         const fastest = res[res.length - 1];
         t = Math.max(t + 60, fastest.leave + 60);
       }
       return { journeys: prune(out), reason: null };
+    }
+
+    /** Cerca i percorsi che arrivano entro q.time, partendo il piu' tardi possibile. */
+    planArriveBy(q) {
+      const { from, to, direct, walkOnly, access, egress } = this._prep(q);
+      const target = q.time;
+      const out = [];
+      if (walkOnly <= MAX_WALK_ONLY) {
+        out.push(finish([{ type: 'walk', from, to, dur: walkOnly, dist: direct, start: target - walkOnly, end: target }], from, to));
+      }
+      if (!this.inFeed(q.day) && !this.inFeed(q.day - 1)) return { journeys: out, reason: 'outside' };
+      if (!access.length || !egress.length) return { journeys: out, reason: access.length ? 'noEgress' : 'noAccess' };
+      const run = (t) => this._search(q.day, t, access, egress, from, to, q.accessible).filter((j) => j.rides > 0);
+      const ea = (t) => { const r = run(t); return r.length ? r[r.length - 1].arrive : INF; };
+      // l'arrivo piu' presto cresce con l'ora di partenza: ricerca binaria sull'ultima partenza utile
+      let lo = Math.max(target - 4 * 3600, -2 * 3600), hi = target;
+      if (ea(lo) > target) return { journeys: prune(out, true), reason: out.length ? null : 'tooEarly' };
+      while (hi - lo > 60) {
+        const mid = Math.floor((lo + hi) / 2);
+        if (ea(mid) <= target) lo = mid; else hi = mid;
+      }
+      for (const t of [lo, lo - 600, lo - 1200, lo - 2400]) {
+        out.push(...run(t).filter((j) => j.arrive <= target));
+      }
+      return { journeys: prune(out, true), reason: null };
+    }
+
+    /** Prossime partenze programmate da un gruppo di fermate. */
+    departures(stops, day, time, limit = 16) {
+      const tt = this.timetable(day);
+      const out = [];
+      for (const s of stops) {
+        for (let j = this.spOff[s]; j < this.spOff[s + 1]; j++) {
+          const pi = this.spPat[j], pos = this.spPos[j];
+          const P = this.patterns[pi], T = tt[pi];
+          if (pos >= P.stops.length - 1 || !T.n) continue;
+          let lo = 0, hi = T.n;
+          while (lo < hi) {
+            const mid = (lo + hi) >> 1;
+            if (T.start[mid] + P.profs[T.prof[mid]][pos] >= time) hi = mid; else lo = mid + 1;
+          }
+          for (let k = lo; k < Math.min(T.n, lo + 4); k++) {
+            out.push({ time: T.start[k] + P.profs[T.prof[k]][pos], route: P.route, head: P.head, stop: s, wc: T.wc[k] });
+          }
+        }
+      }
+      out.sort((a, b) => a.time - b.time);
+      return out.slice(0, limit);
     }
   }
 
@@ -315,7 +371,7 @@
     };
   }
 
-  function prune(list) {
+  function prune(list, arriveBy) {
     const uniq = new Map();
     for (const j of list) if (!uniq.has(j.key)) uniq.set(j.key, j);
     const a = Array.from(uniq.values());
@@ -327,7 +383,7 @@
       // o parte quasi alla stessa ora, arriva molto prima e con meno cambi
       (o.leave >= j.leave - 300 && o.arrive + 600 <= j.arrive && o.transfers <= j.transfers))));
     // ordine: arrivo, con 3 minuti di "costo" per ogni cambio e un peso per le camminate lunghe
-    const cost = (j) => j.arrive + 180 * j.transfers + (j.rides ? 0.5 : 1) * Math.max(0, j.walk - 600);
+    const cost = (j) => (arriveBy ? -j.leave : j.arrive) + 180 * j.transfers + (j.rides ? 0.5 : 1) * Math.max(0, j.walk - 600);
     keep.sort((x, y) => cost(x) - cost(y) || y.leave - x.leave);
     return keep.slice(0, 6);
   }
