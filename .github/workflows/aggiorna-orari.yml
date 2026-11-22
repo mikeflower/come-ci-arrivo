@@ -1,0 +1,37 @@
+name: Aggiorna orari GTT
+
+on:
+  schedule:
+    - cron: "17 3 * * 1"   # ogni lunedi alle 03:17 UTC
+  workflow_dispatch:        # si puo' lanciare a mano dalla scheda Actions
+
+permissions:
+  contents: write
+
+jobs:
+  aggiorna:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Scarica il GTFS di GTT
+        run: |
+          curl -fsSL --retry 3 -o gtfs.zip https://www.gtt.to.it/open_data/gtt_gtfs.zip
+          mkdir -p gtfs && unzip -q -o gtfs.zip -d gtfs
+
+      - name: Rigenera dati e pagina
+        run: |
+          python3 tools/build_data.py gtfs docs/rete.json
+          python3 tools/build_page.py
+
+      - name: Salva se gli orari sono cambiati
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs
+          if git diff --cached --quiet; then
+            echo "Nessuna novita' negli orari"
+          else
+            git commit -m "Aggiorna orari GTT ($(date -u +%Y-%m-%d))"
+            git push
+          fi

@@ -1,0 +1,98 @@
+<title>Come ci arrivo</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Barlow+Condensed:wght@400;600;700&display=swap">
+<style>
+/*STYLE*/
+</style>
+
+<div class="app">
+  <header class="bar">
+    <h1 class="brand">Come ci <span>arrivo</span></h1>
+    <p class="feedinfo" id="feedinfo">Torino e provincia · bus, tram e metro GTT</p>
+  </header>
+
+  <main class="layout">
+    <section class="panel" aria-label="Viaggio">
+      <form class="plan" id="plan" autocomplete="off">
+        <span class="example" id="example" hidden>Esempio: cambia partenza e arrivo</span>
+        <div class="fields">
+          <div class="field" id="field-from">
+            <label for="from-input">Da</label>
+            <input id="from-input" type="text" inputmode="search" placeholder="Fermata, via o palina" aria-autocomplete="list" aria-controls="from-suggest">
+            <div class="field-tools">
+              <button type="button" class="icon-btn palina" id="from-palina" title="Scrivi il numero di palina" aria-label="Partenza: scrivi il numero di palina" aria-pressed="false">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22v-9"/><rect x="5" y="2.5" width="14" height="10" rx="2"/><path d="M9.5 6h5M9.5 9h3"/></svg>
+              </button>
+              <button type="button" class="icon-btn gps" id="from-gps" title="Usa la mia posizione" aria-label="Usa la mia posizione">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="8"/></svg>
+              </button>
+            </div>
+            <ul class="suggest" id="from-suggest" role="listbox" hidden></ul>
+          </div>
+          <div class="field" id="field-to">
+            <label for="to-input">A</label>
+            <input id="to-input" type="text" inputmode="search" placeholder="Dove vuoi andare?" aria-autocomplete="list" aria-controls="to-suggest">
+            <div class="field-tools">
+              <button type="button" class="icon-btn palina" id="to-palina" title="Scrivi il numero di palina" aria-label="Arrivo: scrivi il numero di palina" aria-pressed="false">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22v-9"/><rect x="5" y="2.5" width="14" height="10" rx="2"/><path d="M9.5 6h5M9.5 9h3"/></svg>
+              </button>
+              <button type="button" class="icon-btn" id="to-map" title="Scegli sulla mappa" aria-label="Scegli l'arrivo sulla mappa">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg>
+              </button>
+            </div>
+            <ul class="suggest" id="to-suggest" role="listbox" hidden></ul>
+          </div>
+          <button type="button" class="swap" id="swap" title="Inverti partenza e arrivo" aria-label="Inverti partenza e arrivo">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4v16M3 8l4-4 4 4M17 20V4M13 16l4 4 4-4"/></svg>
+          </button>
+        </div>
+
+        <div class="when">
+          <div class="seg" role="group" aria-label="Quando parti">
+            <button type="button" id="when-now" aria-pressed="true">Adesso</button>
+            <button type="button" id="when-later" aria-pressed="false">Parti alle…</button>
+          </div>
+          <div class="when-at" id="when-at" hidden>
+            <input type="date" id="when-date" aria-label="Giorno">
+            <input type="time" id="when-time" aria-label="Ora" step="60">
+          </div>
+        </div>
+
+        <button type="submit" class="go" id="go">Cerca il percorso</button>
+        <p class="msg" id="msg" role="status"></p>
+      </form>
+
+      <section class="results" id="results" aria-live="polite">
+        <div class="loading"><div class="bar-skel"></div><div class="bar-skel"></div></div>
+      </section>
+    </section>
+
+    <section class="map-wrap" id="map-wrap" aria-label="Mappa della rete">
+      <canvas id="map" aria-label="Mappa delle linee GTT. Tocca un punto per partire o arrivare lì."></canvas>
+      <p class="map-hint" id="map-hint">Tocca la mappa per scegliere da dove parti o dove arrivi</p>
+      <div class="map-ctrl">
+        <button type="button" id="zoom-in" aria-label="Ingrandisci">+</button>
+        <button type="button" id="zoom-out" aria-label="Rimpicciolisci">−</button>
+        <button type="button" id="zoom-fit" aria-label="Inquadra il percorso">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+        </button>
+      </div>
+      <div class="map-pop" id="map-pop" hidden></div>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <span>Dati: <a href="https://www.gtt.to.it" target="_blank" rel="noopener">GTT S.p.A. – Gruppo Torinese Trasporti</a>, uso non commerciale</span>
+    <span>Orari programmati, non in tempo reale</span>
+    <span>App non ufficiale</span>
+  </footer>
+</div>
+
+<script>
+/*ROUTER*/
+</script>
+<script>
+/*APP*/
+</script>

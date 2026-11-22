@@ -1,0 +1,4 @@
+dist/
+gtfs/
+*.zip
+__pycache__/
